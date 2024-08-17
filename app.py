@@ -183,6 +183,10 @@ def get_chatbot_response(query, chat_history, documents=None):
         return response.content
 
 def main():
+
+    os.makedirs("document_storage", exist_ok=True)
+    os.makedirs("db", exist_ok=True)
+
     st.title("Synthesia, Chat with your Data. Efficient Agentic RAG with Mix Blend of Llama-index and Langchain")
 
     if "messages" not in st.session_state:
@@ -201,9 +205,7 @@ def main():
         handle_chat_with_documents()
     elif option == "Add Document":
         handle_add_document()
-    # elif option == "Add URL":
-    #     handle_add_url()
-
+        
 def handle_chat():
     display_chat_messages()
     handle_user_input(use_documents=False)
