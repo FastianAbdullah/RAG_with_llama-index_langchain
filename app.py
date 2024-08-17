@@ -183,7 +183,7 @@ def get_chatbot_response(query, chat_history, documents=None):
         return response.content
 
 def main():
-    st.title("Synthesia, Chat with your Data")
+    st.title("Synthesia, Chat with your Data. Efficient Agentic RAG with Mix Blend of Llama-index and Langchain")
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
