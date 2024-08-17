@@ -24,10 +24,13 @@ from llama_index.core.tools import QueryEngineTool
 from llama_index.core.query_engine.router_query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector
 
-# Load environment variables
-load_dotenv()
-groq_api_key = os.getenv("GROQ_API_KEY")
-user_agent = os.getenv("USER_AGENT")
+
+groq_api_key = st.secrets["GROQ_API_KEY"]
+user_agent = st.secrets["USER_AGENT"]
+
+print(f"GROQ_API_KEY: {groq_api_key}")
+print(f"USER_AGENT: {user_agent}")
+
 
 if groq_api_key is None:
     raise ValueError("Groq API key not found. Please set the GROQ_API_KEY environment variable in your .env file.")
