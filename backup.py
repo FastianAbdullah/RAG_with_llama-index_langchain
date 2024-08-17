@@ -7,6 +7,7 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_text_splitters import RecursiveCharacterTextSplitter 
 from langchain_community.document_loaders import PDFPlumberLoader  
+from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document as LangChainDocument
@@ -14,11 +15,8 @@ from langchain.schema import Document as LangChainDocument
 # Other imports
 import pandas as pd
 import docx2txt
-import chromadb
-from chromadb.config import Settings
-
 # LlamaIndex imports
-from llama_index.core import Settings as LlamaSettings, SummaryIndex, VectorStoreIndex, Document as LlamaDocument
+from llama_index.core import Settings, SummaryIndex, VectorStoreIndex, Document as LlamaDocument
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.node_parser import SentenceSplitter
@@ -26,11 +24,13 @@ from llama_index.core.tools import QueryEngineTool
 from llama_index.core.query_engine.router_query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector
 
-# Load environment variables
-load_dotenv()
 
 groq_api_key = st.secrets["GROQ_API_KEY"]
 user_agent = st.secrets["USER_AGENT"]
+
+print(f"GROQ_API_KEY: {groq_api_key}")
+print(f"USER_AGENT: {user_agent}")
+
 
 if groq_api_key is None:
     raise ValueError("Groq API key not found. Please set the GROQ_API_KEY environment variable in your .env file.")
@@ -42,8 +42,8 @@ cached_llm = ChatGroq(model_name="llama3-8b-8192")
 embedding = HuggingFaceBgeEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 # LlamaIndex settings
-LlamaSettings.llm = Groq(api_key=groq_api_key, model="llama3-8b-8192")
-LlamaSettings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+Settings.llm = Groq(api_key=groq_api_key, model="llama3-8b-8192")
+Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 raw_prompt = PromptTemplate(
     input_variables=["input", "context"],
@@ -78,6 +78,16 @@ class DataLoader:
         elif file_extension in ['.xlsx', '.xls']:
             df = pd.read_excel(self.filepath_or_url)
             documents = [LangChainDocument(page_content=df.to_string(), metadata={"source": self.filepath_or_url})]
+        # elif self.filepath_or_url.startswith(('http://', 'https://')):
+        #     config = Config(
+        #         url=self.filepath_or_url,
+        #         match=f"{self.filepath_or_url}/**",
+        #         selector="body",  
+        #         max_pages_to_crawl=10, 
+        #         output_file_name="temp_output.json"
+        #     )
+        #     results = asyncio.run(main.crawl(config))
+        #     return [LangChainDocument(page_content=item['html'], metadata={'source': item['url']}) for item in results]
         else:
             raise ValueError(f"Unsupported file type: {file_extension}")
 
@@ -93,7 +103,7 @@ class DataLoader:
 
     def process_document(self, chunk_size=1024, chunk_overlap=80):
         documents = self.load_document()
-        if len(documents) == 1 and self.filepath_or_url.endswith(('.xlsx', '.xls')):
+        if len(documents) == 1 and (self.filepath_or_url.endswith(('.xlsx', '.xls')) or self.filepath_or_url.startswith(('http://', 'https://'))):
             chunks = documents
         else:
             chunks = self.chunk_document(documents, chunk_size, chunk_overlap)
@@ -173,9 +183,9 @@ def get_chatbot_response(query, chat_history, documents=None):
         return response.content
 
 def main():
-    # Create necessary folders
+
     os.makedirs("document_storage", exist_ok=True)
-    os.makedirs(folder_path, exist_ok=True)
+    os.makedirs("db", exist_ok=True)
 
     st.title("Synthesia, Chat with your Data. Efficient Agentic RAG with Mix Blend of Llama-index and Langchain")
 
@@ -195,7 +205,7 @@ def main():
         handle_chat_with_documents()
     elif option == "Add Document":
         handle_add_document()
-
+        
 def handle_chat():
     display_chat_messages()
     handle_user_input(use_documents=False)
@@ -205,52 +215,63 @@ def handle_chat_with_documents():
         st.warning("Please add a document before chatting with documents.")
         return
 
-    chroma_client = chromadb.Client(Settings(persist_directory=folder_path, anonymized_telemetry=False))
-    collection = chroma_client.get_collection(name="my_collection")
-    documents = collection.get()
-    if not documents['documents']:
+    vector_store = Chroma(persist_directory=folder_path, embedding_function=embedding)
+    documents = vector_store.get()
+    if not documents:
         st.warning("No document content available. Please add a non-empty document.")
         return
     display_chat_messages()
     handle_user_input(use_documents=True, documents=documents)
 
+def process_document(data_loader, chunk_size=1024, chunk_overlap=80):
+    documents = data_loader.load_document()
+    total_content = "".join([doc.page_content for doc in documents])
+    
+    if len(total_content) < chunk_size:
+        return [LangChainDocument(page_content=total_content, metadata=documents[0].metadata)]
+    else:
+        return data_loader.chunk_document(documents, chunk_size, chunk_overlap)
+
 def handle_add_document():
     uploaded_file = st.file_uploader("Choose a file", type=['pdf', 'txt', 'docx', 'xlsx'])
     if uploaded_file is not None:
         with st.spinner('Processing...'):
-            try:
-                # Ensure the document_storage directory exists
-                os.makedirs("document_storage", exist_ok=True)
-                
-                save_path = os.path.join("document_storage", uploaded_file.name)
-                with open(save_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+            save_path = f"document_storage/{uploaded_file.name}"
+            with open(save_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
 
-                data_loader = DataLoader(save_path, user_agent)
-                chunks = data_loader.process_document(chunk_size=1024, chunk_overlap=80)
+            data_loader = DataLoader(save_path, user_agent)
+            chunks = process_document(data_loader, chunk_size=1024, chunk_overlap=80)
 
-                if not chunks:
-                    st.error(f"No content could be extracted from {uploaded_file.name}. Please ensure the file is not empty and try again.")
-                    st.session_state.document_added = False
-                    return
-
-                # Initialize Chroma
-                chroma_client = chromadb.Client(Settings(persist_directory=folder_path, anonymized_telemetry=False))
-                collection = chroma_client.create_collection(name="my_collection")
-
-                # Add documents to the collection
-                for i, chunk in enumerate(chunks):
-                    collection.add(
-                        documents=[chunk.page_content],
-                        metadatas=[chunk.metadata],
-                        ids=[f"id_{i}"]
-                    )
-
-                st.session_state.document_added = True
-                st.success(f"Successfully uploaded {uploaded_file.name} and processed {len(chunks)} chunk(s).")
-            except Exception as e:
-                st.error(f"An error occurred while processing the document: {str(e)}")
+            if not chunks:
+                st.error(f"No content could be extracted from {uploaded_file.name}. Please ensure the file is not empty and try again.")
                 st.session_state.document_added = False
+                return
+
+            vector_store = Chroma.from_documents(documents=chunks, embedding=embedding, persist_directory=folder_path)
+            vector_store.persist()
+
+            st.session_state.document_added = True
+            st.success(f"Successfully uploaded {uploaded_file.name} and processed {len(chunks)} chunk(s).")
+
+# def handle_add_url():
+#     url = st.text_input("Enter the URL to process:")
+#     if st.button("Process URL"):
+#         with st.spinner('Processing...'):
+#             data_loader = DataLoader(url, user_agent)
+#             chunks = process_document(data_loader, chunk_size=1024, chunk_overlap=80)
+
+#             if not chunks:
+#                 st.error(f"No content could be extracted from the URL: {url}. Please ensure the URL is valid and contains accessible content.")
+#                 st.session_state.document_added = False
+#                 return
+
+#             vector_store = Chroma(persist_directory=folder_path, embedding_function=embedding)
+#             vector_store.add_documents(chunks)
+#             vector_store.persist()
+
+#             st.session_state.document_added = True
+#             st.success(f"Successfully processed URL: {url} and added {len(chunks)} chunk(s).")
 
 def display_chat_messages():
     for message in st.session_state.messages:
@@ -271,6 +292,18 @@ def handle_user_input(use_documents=False, documents=None):
         with st.chat_message("assistant"):
             st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
+
+def get_chatbot_response(query, chat_history, documents=None):
+    if documents:
+        llama_documents = [LlamaDocument(text=doc, metadata={}) for doc in documents['documents']]
+        query_engine = create_query_router(llama_documents)
+        response = query_engine.query(query)
+        return str(response)
+    else:
+        chat_history_str = ''.join([f"{m['role'].capitalize()}: {m['content']}\n" for m in chat_history])
+        full_prompt = f"Chat History:\n{chat_history_str}Human: {query}\nAI:"
+        response = cached_llm.invoke([HumanMessage(content=full_prompt)])
+        return response.content
 
 if __name__ == "__main__":
     main()
