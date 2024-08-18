@@ -171,11 +171,17 @@ def get_chatbot_response(query, chat_history, documents=None):
         full_prompt = f"Chat History:\n{chat_history_str}Human: {query}\nAI:"
         response = cached_llm.invoke([HumanMessage(content=full_prompt)])
         return response.content
+    
+def initialize_chroma_client():
+    return chromadb.PersistentClient(path=folder_path)
 
 def main():
     # Create necessary folders
     os.makedirs("document_storage", exist_ok=True)
     os.makedirs(folder_path, exist_ok=True)
+
+    if 'chroma_client' not in st.session_state:
+        st.session_state.chroma_client = initialize_chroma_client()
 
     st.title("Synthesia, Chat with your Data. Efficient Agentic RAG with Mix Blend of Llama-index and Langchain")
 
@@ -205,8 +211,7 @@ def handle_chat_with_documents():
         st.warning("Please add a document before chatting with documents.")
         return
 
-    chroma_client = chromadb.Client(Settings(persist_directory=folder_path, anonymized_telemetry=False))
-    collection = chroma_client.get_collection(name="my_collection")
+    collection = st.session_state.chroma_client.get_or_create_collection(name="my_collection")
     documents = collection.get()
     if not documents['documents']:
         st.warning("No document content available. Please add a non-empty document.")
@@ -235,16 +240,15 @@ def handle_add_document():
                     return
 
                 # Initialize Chroma
-                chroma_client = chromadb.Client(Settings(persist_directory=folder_path, anonymized_telemetry=False))
-                collection = chroma_client.create_collection(name="my_collection")
+                # chroma_client = chromadb.Client(Settings(persist_directory=folder_path, anonymized_telemetry=False))
+                collection = st.session_state.chroma_client.get_or_create_collection(name="my_collection")
 
                 # Add documents to the collection
-                for i, chunk in enumerate(chunks):
-                    collection.add(
-                        documents=[chunk.page_content],
-                        metadatas=[chunk.metadata],
-                        ids=[f"id_{i}"]
-                    )
+                collection.add(
+                    documents=[chunk.page_content for chunk in chunks],
+                    metadatas=[chunk.metadata for chunk in chunks],
+                    ids=[f"id_{i}" for i in range(len(chunks))]
+                )
 
                 st.session_state.document_added = True
                 st.success(f"Successfully uploaded {uploaded_file.name} and processed {len(chunks)} chunk(s).")
