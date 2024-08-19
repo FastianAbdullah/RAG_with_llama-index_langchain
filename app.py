@@ -174,8 +174,8 @@ def get_chatbot_response(query, chat_history, documents=None):
         return response.content
     
 def initialize_chroma_client():
-    return chromadb.PersistentClient(path=folder_path)
-    chromadb.Per
+    return chromadb.Client(path=folder_path)
+
 
 def main():
     # Create necessary folders
