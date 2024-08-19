@@ -14,7 +14,7 @@ from langchain.schema import Document as LangChainDocument
 # Other imports
 import pandas as pd
 import docx2txt
-import chromadb
+from chromadb import PersistentClient
 from chromadb.config import Settings
 
 # LlamaIndex imports
@@ -25,10 +25,6 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.query_engine.router_query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector
-
-import sys
-import pysqlite3
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 # Load environment variables
 load_dotenv()
@@ -177,7 +173,9 @@ def get_chatbot_response(query, chat_history, documents=None):
         return response.content
     
 def initialize_chroma_client():
-    return chromadb.PersistentClient(path=folder_path)
+    # Ensure the folder path exists
+    os.makedirs(folder_path, exist_ok=True)
+    return PersistentClient(path=folder_path)
 
 def main():
     # Create necessary folders
@@ -215,7 +213,7 @@ def handle_chat_with_documents():
         st.warning("Please add a document before chatting with documents.")
         return
 
-    collection = st.session_state.chroma_client.get_or_create_collection(name="my_collection")
+    collection = st.session_state.chroma_client.get_or_create_collection(name="my_collection")  
     documents = collection.get()
     if not documents['documents']:
         st.warning("No document content available. Please add a non-empty document.")
