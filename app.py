@@ -174,7 +174,7 @@ def get_chatbot_response(query, chat_history, documents=None):
         return response.content
     
 def initialize_chroma_client():
-    return chromadb.client()
+    return chromadb.Client()
 
 
 def main():
