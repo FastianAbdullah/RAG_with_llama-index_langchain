@@ -2,7 +2,6 @@ import streamlit as st
 from dotenv import load_dotenv
 import os
 
-
 # Langchain Imports
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage
@@ -11,7 +10,6 @@ from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document as LangChainDocument
-import time
 
 # Other imports
 import pandas as pd
@@ -178,37 +176,6 @@ def get_chatbot_response(query, chat_history, documents=None):
 def initialize_chroma_client():
     return chromadb.Client()
 
-def handle_user_input(use_documents=False, documents=None):
-    prompt = st.chat_input("What is your question?")
-    if prompt:
-        st.chat_message("user").markdown(prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})
-
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            # Simulate typing
-            for i in range(3):
-                message_placeholder.markdown("Brainstorming..." + "." * (i+1))
-                time.sleep(0.5)
-            
-            # Generate the actual response
-            response = get_chatbot_response(prompt, st.session_state.messages, documents if use_documents else None)
-
-            if not response or response.strip() == "Empty Response":
-                response = "I apologize, but I couldn't find any relevant information to answer your question. Could you please rephrase your question or ask about something else related to the uploaded documents?"
-
-            # Simulate typing out the response
-            for chunk in response.split():
-                full_response += chunk + " "
-                time.sleep(0.05)
-                message_placeholder.markdown(full_response + "▌")
-            
-            message_placeholder.markdown(full_response)
-
-        st.session_state.messages.append({"role": "assistant", "content": response})
-
 
 def main():
     # Create necessary folders
@@ -295,6 +262,43 @@ def display_chat_messages():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+
+# def handle_user_input(use_documents=False, documents=None):
+#     prompt = st.chat_input("What is your question?")
+#     if prompt:
+#         st.chat_message("user").markdown(prompt)
+#         st.session_state.messages.append({"role": "user", "content": prompt})
+
+#         response = get_chatbot_response(prompt, st.session_state.messages, documents if use_documents else None)
+
+#         if not response or response.strip() == "Empty Response":
+#             response = "I apologize, but I couldn't find any relevant information to answer your question. Could you please rephrase your question or ask about something else related to the uploaded documents?"
+
+#         with st.chat_message("assistant"):
+#             st.markdown(response)
+#         st.session_state.messages.append({"role": "assistant", "content": response})
+
+import time
+
+def handle_user_input(use_documents=False, documents=None):
+    prompt = st.chat_input("What is your question?")
+    if prompt:
+        st.chat_message("user").markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        with st.chat_message("assistant"):
+            st.markdown("Brainstorming...")
+        
+        time.sleep(1) 
+        
+        response = get_chatbot_response(prompt, st.session_state.messages, documents if use_documents else None)
+
+        if not response or response.strip() == "Empty Response":
+            response = "I apologize, but I couldn't find any relevant information to answer your question. Could you please rephrase your question or ask about something else related to the uploaded documents?"
+
+        with st.chat_message("assistant"):
+            st.markdown(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 
 if __name__ == "__main__":
