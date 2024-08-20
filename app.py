@@ -190,7 +190,7 @@ def handle_user_input(use_documents=False, documents=None):
             
             # Simulate typing
             for i in range(3):
-                message_placeholder.markdown("Bot is thinking" + "." * (i+1))
+                message_placeholder.markdown("Brainstorming..." + "." * (i+1))
                 time.sleep(0.5)
             
             # Generate the actual response
