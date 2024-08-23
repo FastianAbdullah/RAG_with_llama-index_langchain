@@ -185,7 +185,7 @@ def main():
     if 'chroma_client' not in st.session_state:
         st.session_state.chroma_client = initialize_chroma_client()
 
-    st.title("Synthesia, Chat with your Data.")
+    st.title("Agentic-RAG - Synthesia, Chat with your Data.")
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
